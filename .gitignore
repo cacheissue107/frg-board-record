@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor / tool settings
+.vscode/
+.idea/
+.claude/
+
+# Never commit the source spreadsheet or an unredacted export
+*.xlsx
+*.xlsx#
+~$*
+data/*.bak
+data/*unredacted*
