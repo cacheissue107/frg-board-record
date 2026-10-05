@@ -134,12 +134,12 @@ function renderChips(){
 }
 // Re-rendering the chips replaces the buttons, so put keyboard focus back on the one just pressed.
 function refocus(sel){const el=document.querySelector(sel);if(el)el.focus();return !!el}
-$("#years").addEventListener("click",e=>{const b=e.target.closest("[data-year]");if(!b)return;const y=b.dataset.year;S.years.has(y)?S.years.delete(y):S.years.add(y);go();refocus(`[data-year="${y}"]`)});
+$("#years").addEventListener("click",e=>{const b=e.target.closest("[data-year]");if(!b)return;const y=b.dataset.year;S.years.has(y)?S.years.delete(y):S.years.add(y);showFiltered();go();refocus(`[data-year="${y}"]`)});
 $("#topics").addEventListener("click",e=>{const b=e.target.closest("[data-topic]");if(!b)return;const t=b.dataset.topic;toggleTopic(t);refocus(`#topics [data-topic="${CSS.escape(t)}"]`)});
 $("#moreTopics").onclick=()=>{S.allTopics=!S.allTopics;renderChips()};
-$("#splitOnly").onchange=e=>{S.split=e.target.checked;go()};
-$("#hideCancelled").onchange=e=>{S.hideCancelled=e.target.checked;go()};
-$("#pcOnly").onchange=e=>{S.pc=e.target.checked;go()};
+$("#splitOnly").onchange=e=>{S.split=e.target.checked;showFiltered();go()};
+$("#hideCancelled").onchange=e=>{S.hideCancelled=e.target.checked;showFiltered();go()};
+$("#pcOnly").onchange=e=>{S.pc=e.target.checked;showFiltered();go()};
 $("#reset").onclick=()=>{S.q="";$("#q").value="";S.years.clear();S.topics.clear();S.split=false;S.pc=false;S.hideCancelled=true;S.quarter=null;S.member=null;go()};
 // The first keystroke of a search adds a history entry; the rest of the typing refines it.
 let qt,typing=false;
@@ -147,7 +147,9 @@ $("#q").addEventListener("input",e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=e.t
 $("#q").addEventListener("blur",()=>{typing=false});
 $("#railtoggle").onclick=()=>{const r=$("#rail");r.classList.toggle("collapsed");$("#railtoggle").setAttribute("aria-expanded",!r.classList.contains("collapsed"))};
 if(matchMedia("(max-width:860px)").matches){$("#rail").classList.add("collapsed");$("#railtoggle").setAttribute("aria-expanded","false")}
-function toggleTopic(t){S.topics.has(t)?S.topics.delete(t):S.topics.add(t);if(S.tab!=="meetings")setTab("meetings");go()}
+function toggleTopic(t){S.topics.has(t)?S.topics.delete(t):S.topics.add(t);showFiltered();go()}
+// Storylines and Topic map don't follow the filters, so changing a filter there jumps to Meetings; Meetings and Votes update in place.
+function showFiltered(){if(S.tab==="stories"||S.tab==="map")setTab("meetings")}
 
 // --- tabs (WAI-ARIA tabs pattern: arrow keys move between tabs, only the active tab is in the Tab order)
 const tabBtns=[...document.querySelectorAll(".tab")];
@@ -163,7 +165,7 @@ function setTab(t){S.tab=t;
 
 // --- filtering
 const qOf=r=>{const d=new Date(r.d+"T12:00");return r.y+"-Q"+(Math.floor(d.getMonth()/3)+1)};
-function filtered(){
+function filtered(opts={}){
   const terms=S.q.toLowerCase().split(/\s+/).filter(Boolean);
   return rows.filter(r=>{
     if(S.hideCancelled&&r.s==="Cancelled"&&!terms.length)return false;
@@ -172,7 +174,7 @@ function filtered(){
     if(S.split&&!r.split)return false;
     if(S.pc&&(!r.p||r.p==="None."))return false;
     if(S.quarter&&qOf(r)!==S.quarter)return false;
-    if(S.member&&!(r.no.includes(S.member.n)&&S.member.k==="no"||r.abs.includes(S.member.n)&&S.member.k==="abs"))return false;
+    if(S.member&&!opts.anyMember&&!(r.no.includes(S.member.n)&&S.member.k==="no"||r.abs.includes(S.member.n)&&S.member.k==="abs"))return false;
     return terms.every(t=>r.hay.includes(t));
   });
 }
@@ -276,26 +278,39 @@ $("#view-map").addEventListener("keydown",e=>{
 });
 
 // --- votes & attendance
+const activeOn=(m,date)=>{const sp=m.spans[date.slice(0,4)];return !!sp&&date>=sp[0]&&date<=sp[1]};
 function renderVotes(){
-  const noC={},absC={};rows.forEach(r=>{new Set(r.no).forEach(n=>noC[n]=(noC[n]||0)+1);r.abs.forEach(n=>absC[n]=(absC[n]||0)+1)});
-  const bars=(obj,cls,k)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);const mx=Math.max(1,...e.map(x=>x[1]));
-    return e.length?e.map(([n,c])=>`<button type="button" class="bar ${cls}" data-member="${esc(n)}" data-kind="${k}" aria-label="${esc(n)}: ${c} meeting${c===1?"":"s"}. Show them."><span>${esc(n)}</span><span class="track" aria-hidden="true"><span class="fill" style="display:block;width:${100*c/mx}%"></span></span><span class="num" aria-hidden="true">${c}</span></button>`).join(""):`<p class="note">None recorded.</p>`};
-  const ms=[...members.entries()].sort((a,b)=>(a[1].role==="President"?-1:0)-(b[1].role==="President"?-1:0)||a[1].sur.localeCompare(b[1].sur)||a[0].localeCompare(b[0]));
-  const splits=rows.filter(r=>r.split).length;
-  $("#view-votes").innerHTML=`<div class="votegrid">
-    <div class="card"><h3>Who votes no</h3><p class="sub">Meetings where each member cast at least one recorded no vote. ${splits} of ${held.length} meetings had a split vote. Click a name to see those meetings.</p>${bars(noC,"","no")}</div>
+  const vr=filtered({anyMember:true}).filter(r=>r.s!=="Cancelled");
+  // members on the board for at least one of these meetings
+  const serving=[...members.values()].filter(m=>vr.some(r=>activeOn(m,r.d)));
+  const noC={},absC={};serving.forEach(m=>{noC[m.label]=0;absC[m.label]=0});
+  vr.forEach(r=>{new Set(r.no).forEach(n=>noC[n]=(noC[n]||0)+1);r.abs.forEach(n=>absC[n]=(absC[n]||0)+1)});
+  const bars=(obj,cls,k)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));const mx=Math.max(1,...e.map(x=>x[1]));
+    return e.length?e.map(([n,c])=>{const inner=`<span>${esc(n)}</span><span class="track" aria-hidden="true"><span class="fill" style="display:block;width:${100*c/mx}%"></span></span><span class="num" aria-hidden="true">${c}</span>`;
+      return c?`<button type="button" class="bar ${cls}" data-member="${esc(n)}" data-kind="${k}" aria-label="${esc(n)}: ${c} meeting${c===1?"":"s"}. Show them.">${inner}</button>`
+        :`<div class="bar ${cls} zero" aria-label="${esc(n)}: none">${inner}</div>`}).join(""):`<p class="note">None recorded.</p>`};
+  const ms=serving.sort((a,b)=>(a.role==="President"?-1:0)-(b.role==="President"?-1:0)||a.sur.localeCompare(b.sur)||a.full.localeCompare(b.full));
+  const splits=vr.filter(r=>r.split).length;
+  const scope=[S.years.size?[...S.years].sort().join(", "):"",S.quarter?S.quarter.replace("-"," "):"",...S.topics,
+    S.split?"split votes only":"",S.pc?"with public comment":"",S.q?`matching “${esc(S.q)}”`:""].filter(Boolean);
+  const scopeLine=`<div class="resultbar"><span role="status">${scope.length?`Counting ${vr.length} meeting${vr.length===1?"":"s"}: ${scope.map(esc).join(" &middot; ")}`:`Counting all ${vr.length} meetings`}</span>${scope.length?`<button type="button" class="linkbtn" data-votes-reset>Clear filters</button>`:""}</div>`;
+  if(!vr.length){$("#view-votes").innerHTML=scopeLine+`<div class="empty">No meetings match these filters.</div>`;return}
+  $("#view-votes").innerHTML=scopeLine+`<div class="votegrid">
+    <div class="card"><h3>Who votes no</h3><p class="sub">Meetings where each member cast at least one recorded no vote. ${splits} of ${vr.length} meetings had a split vote. Click a name to see those meetings.</p>${bars(noC,"","no")}</div>
     <div class="card"><h3>Absences</h3><p class="sub">Meetings where the minutes list each member as absent.</p>${bars(absC,"abs","abs")}</div>
-    <div class="card"><h3>The board</h3><p class="sub">Members named in the tracker, with the years they appear.</p><div class="roster">${ms.map(([s,m])=>`<div><b>${m.role==="President"?"Pres.":"Trustee"}</b><span>${esc(m.full)} <span class="note" style="margin:0">(${[...m.years].sort().join(", ")})</span></span></div>`).join("")}</div></div>
+    <div class="card"><h3>The board</h3><p class="sub">Members serving during ${scope.length?"these":"the recorded"} meetings, with the years they appear.</p><div class="roster">${ms.map(m=>`<div><b>${m.role==="President"?"Pres.":"Trustee"}</b><span>${esc(m.full)} <span class="note" style="margin:0">(${[...m.years].sort().join(", ")})</span></span></div>`).join("")}</div></div>
   </div><p class="note">Counts are pulled automatically from the meeting summaries, so treat them as close, not exact. A member voting "present" or abstaining isn't counted as a no.</p>`;
 }
-$("#view-votes").addEventListener("click",e=>{const b=e.target.closest("[data-member]");if(!b)return;S.member={n:b.dataset.member,k:b.dataset.kind};S.years.clear();S.topics.clear();S.hideCancelled=true;setTab("meetings");go();window.scrollTo({top:0});focusResults()});
+$("#view-votes").addEventListener("click",e=>{
+  if(e.target.closest("[data-votes-reset]")){$("#reset").click();$("#tab-votes").focus();return}
+  const b=e.target.closest("[data-member]");if(!b)return;S.member={n:b.dataset.member,k:b.dataset.kind};S.hideCancelled=true;setTab("meetings");go();window.scrollTo({top:0});focusResults()});
 
 // After jumping from another tab into filtered meetings, move keyboard focus to the Meetings tab.
 function focusResults(){$("#tab-meetings").focus({preventScroll:true})}
 
-function go(mode="push"){renderChips();renderMeetings();syncURL(mode)}
+function go(mode="push"){renderChips();renderMeetings();renderVotes();syncURL(mode)}
 // Back/forward: rebuild state from the URL without adding history.
-window.addEventListener("popstate",()=>{readURL();setTab(S.tab);renderChips();renderMeetings()});
+window.addEventListener("popstate",()=>{readURL();setTab(S.tab);renderChips();renderMeetings();renderVotes()});
 renderStories();renderMap();renderVotes();setTab(S.tab);renderChips();renderMeetings();
 // Turn an old "#votes"-style link into the query-string form.
 if(location.hash)syncURL("replace");

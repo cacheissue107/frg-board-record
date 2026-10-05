@@ -180,3 +180,5 @@ footer a{color:var(--river)}
 .prose code{font-family:var(--f-mono);font-size:.9em;background:var(--soft);padding:1px 5px;border-radius:4px}
 main:focus{outline:none}
 .is-loading #filters,.is-loading .railtoggle{visibility:hidden}
+.bar.zero{cursor:default}
+.bar.zero:hover .fill{filter:none}
