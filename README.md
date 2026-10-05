@@ -1,6 +1,6 @@
 # Fox River Grove Board Record (Unofficial)
 
-A small static website (live at <https://cacheissue107.github.io/frg-board-record/>) with a searchable record of Fox River Grove, Illinois Village Board meetings. It's plain HTML, CSS and JavaScript, with no build step and no server code, so it can be hosted for free almost anywhere.
+A small static website (live at <https://groundedbuilder.github.io/frg-board-record/>) with a searchable record of Fox River Grove, Illinois Village Board meetings. It's plain HTML, CSS and JavaScript, with no build step and no server code, so it can be hosted for free almost anywhere.
 
 This is an independent project and is **not** an official Village website.
 
@@ -144,7 +144,7 @@ The browser's Back button steps back through your filter changes.
 
 - [ ] Run `python3 scripts/update_data.py --show-redactions` and skim the list.
 - [ ] Open the site locally and spot-check a few public comments.
-- [x] The site address (`https://cacheissue107.github.io/frg-board-record/`) is set in the `og:url` and `canonical` tags of `index.html` and `about.html`. If you rename the repo or move to your own domain, update those.
+- [x] The site address (`https://groundedbuilder.github.io/frg-board-record/`) is set in the `og:url` and `canonical` tags of `index.html` and `about.html`. If you rename the repo or move to your own domain, update those.
 - [ ] Decide how people should reach you with corrections (an email address, or "open an issue on GitHub") and add it to the *Corrections* section of `about.html`.
 
 ## Privacy and third parties
