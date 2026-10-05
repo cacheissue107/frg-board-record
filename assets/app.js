@@ -32,22 +32,37 @@ const rows=(DATA&&DATA.rows||[]).map((r,i)=>({...r,i,y:String(r.d).slice(0,4),ta
 const about=Object.fromEntries((DATA&&DATA.about||[]).map(a=>[a[0],a[1]]));
 
 // --- board members from "Board (YYYY)" rows
-const members=new Map(); // surname -> {full, years:Set, role}
+// Minutes name members by surname only, and two different people can share one (Patrick and
+// Kirsten Wall). So members are keyed by full name, and notes like "(through April)" or
+// "(from May 2)" give each person's dates that year; a surname is resolved per meeting date.
+const MONTHS=["january","february","march","april","may","june","july","august","september","october","november","december"];
+const members=new Map(); // full name -> {full, sur, years:Set, role, spans:{year:[from,to]}}
 Object.entries(about).filter(([k])=>/^Board \(\d{4}\)$/.test(k)).sort().forEach(([k,v])=>{
   const yr=k.match(/\d{4}/)[0];
-  const add=(full,role)=>{full=full.replace(/\(.*?\)/g,"").trim();if(!full)return;const sur=full.split(/\s+/).pop();
-    if(!members.has(sur))members.set(sur,{full,years:new Set(),role});members.get(sur).years.add(yr);if(role==="President")members.get(sur).role=role;};
+  const add=(raw,role)=>{const full=raw.replace(/\(.*?\)/g,"").trim();if(!full)return;
+    if(!members.has(full))members.set(full,{full,sur:full.split(/\s+/).pop(),years:new Set(),role,spans:{}});
+    const m=members.get(full);m.years.add(yr);if(role==="President")m.role=role;
+    let from=yr+"-01-01",to=yr+"-12-31";
+    (raw.match(/\(([^)]*)\)/)||["",""])[1].replace(/\b(through|from)\s+([A-Za-z]+)(?:\s+(\d{1,2}))?/gi,(_,w,mon,day)=>{
+      const mi=MONTHS.indexOf(mon.toLowerCase());if(mi<0)return;const mm=String(mi+1).padStart(2,"0");
+      if(w.toLowerCase()==="from")from=`${yr}-${mm}-${String(day||1).padStart(2,"0")}`;else to=`${yr}-${mm}-${String(day||31).padStart(2,"0")}`;});
+    m.spans[yr]=[from,to];};
   const pres=v.match(/President\s+([A-Z][\w.'-]+(?:\s+[A-Z][\w.'-]+)+)/);if(pres)add(pres[1],"President");
   const tr=v.match(/Trustees?\s+([^;]+)/);if(tr)tr[1].split(",").forEach(n=>add(n,"Trustee"));
 });
-const names=[...members.keys()];
+const bySur={};members.forEach(m=>(bySur[m.sur]=bySur[m.sur]||[]).push(m));
+// Label: plain surname when unique, "K. Wall" style when two members share it.
+members.forEach(m=>m.label=bySur[m.sur].length>1?m.full[0]+". "+m.sur:m.sur);
+function resolve(sur,date){const c=bySur[sur]||[];if(c.length<2)return c[0]&&c[0].label;const y=date.slice(0,4);
+  const hit=c.find(m=>m.spans[y]&&date>=m.spans[y][0]&&date<=m.spans[y][1])||c.find(m=>m.years.has(y))||c[0];return hit.label}
+const names=Object.keys(bySur);
 const NAMES=names.join("|")||"ZZZZ";
 const listRe=`((?:\\b(?:${NAMES})\\b(?:\\s*,\\s*|\\s+and\\s+|\\s*&\\s*))*\\b(?:${NAMES})\\b)`;
 const noRe=new RegExp(listRe+`\\s*(?:[-\\u2013:]\\s*)?["\\u201c']?no\\b`,"g");
 const absRe=new RegExp(listRe+`\\s+(?:was\\s+|were\\s+)?absent`,"g");
 const pull=(re,txt)=>{const out=[];let m;re.lastIndex=0;while((m=re.exec(txt))){m[1].split(/\s*,\s*|\s+and\s+|\s*&\s*/).forEach(n=>{n=n.trim();if(names.includes(n))out.push(n)})}return out};
 rows.forEach(r=>{
-  r.no=pull(noRe,r.o||"");r.abs=[...new Set(pull(absRe,r.o||""))];
+  r.no=pull(noRe,r.o||"").map(n=>resolve(n,r.d));r.abs=[...new Set(pull(absRe,r.o||"").map(n=>resolve(n,r.d)))];
   r.split=r.no.length>0||/\b[1-9]-[1-9](?:-\d)?\b/.test(r.o||"")||/deadlock/i.test(r.o||"")||/\bFAILED\b/.test(r.o||"");
   r.hay=[r.d,r.t,r.s,r.a,r.o,r.p,r.g].join(" ").toLowerCase();
 });
@@ -265,7 +280,7 @@ function renderVotes(){
   const noC={},absC={};rows.forEach(r=>{new Set(r.no).forEach(n=>noC[n]=(noC[n]||0)+1);r.abs.forEach(n=>absC[n]=(absC[n]||0)+1)});
   const bars=(obj,cls,k)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);const mx=Math.max(1,...e.map(x=>x[1]));
     return e.length?e.map(([n,c])=>`<button type="button" class="bar ${cls}" data-member="${esc(n)}" data-kind="${k}" aria-label="${esc(n)}: ${c} meeting${c===1?"":"s"}. Show them."><span>${esc(n)}</span><span class="track" aria-hidden="true"><span class="fill" style="display:block;width:${100*c/mx}%"></span></span><span class="num" aria-hidden="true">${c}</span></button>`).join(""):`<p class="note">None recorded.</p>`};
-  const ms=[...members.entries()].sort((a,b)=>(a[1].role==="President"?-1:0)-(b[1].role==="President"?-1:0)||a[0].localeCompare(b[0]));
+  const ms=[...members.entries()].sort((a,b)=>(a[1].role==="President"?-1:0)-(b[1].role==="President"?-1:0)||a[1].sur.localeCompare(b[1].sur)||a[0].localeCompare(b[0]));
   const splits=rows.filter(r=>r.split).length;
   $("#view-votes").innerHTML=`<div class="votegrid">
     <div class="card"><h3>Who votes no</h3><p class="sub">Meetings where each member cast at least one recorded no vote. ${splits} of ${held.length} meetings had a split vote. Click a name to see those meetings.</p>${bars(noC,"","no")}</div>

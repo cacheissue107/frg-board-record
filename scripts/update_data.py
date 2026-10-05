@@ -36,7 +36,9 @@ DEFAULT_OUT = os.path.join(ROOT, "data", "meetings.json")
 # are all-caps words ("3 FOIA requests").
 _DIR = r"(?:(?:N|S|E|W|NE|NW|SE|SW|North|South|East|West)\.?\s+)"
 _WORD = r"(?:(?:St|Ave|Rd|Ct|Ln|Dr|Hwy|Blvd|Pl|Pkwy|Ter|Cir)\.|[A-Z][a-z][A-Za-z'-]*)"
-ADDRESS = re.compile(rf"\b\d{{1,5}}[A-Za-z]?\s+{_DIR}?{_WORD}(?:\s+{_WORD}){{0,3}}")
+# House numbers can come in lists that share a street: "1111 and 1115 Shannon", "10 & 12 Elm", "1111-1115 Shannon".
+_NUM = r"\d{1,5}[A-Za-z]?"
+ADDRESS = re.compile(rf"\b{_NUM}(?:\s*(?:,|and|&|-)\s*{_NUM})*\s+{_DIR}?{_WORD}(?:\s+{_WORD}){{0,3}}")
 YEAR = re.compile(r"^(19|20)\d\d\s")
 PAREN = re.compile(r"\s*\(([^()]*)\)")
 PLACEHOLDER = "[address removed]"
